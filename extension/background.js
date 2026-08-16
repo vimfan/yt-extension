@@ -187,6 +187,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     hostReady().then(sendResponse);
     return true;
   }
+  if (msg.type === "getSettings") {
+    chrome.storage.sync.get({ playerChoice: "ask" }, (s) => sendResponse({ playerChoice: s.playerChoice }));
+    return true;
+  }
+  if (msg.type === "saveSettings") {
+    chrome.storage.sync.set({ playerChoice: msg.playerChoice || "ask" }, () => sendResponse({ ok: true }));
+    return true;
+  }
   if (msg.type === "cacheVideo") {
     (async () => {
       const ready = await hostReady();

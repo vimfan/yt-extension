@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YT Local — Settings</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #181818; color: #eee; max-width: 560px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 20px; }
+  p.hint { color: #aaa; font-size: 13px; }
+  .card { background: #222; border: 1px solid #333; border-radius: 10px; padding: 16px; margin-top: 16px; }
+  .opt { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #2a2a2a; }
+  .opt:last-child { border-bottom: none; }
+  .opt input { margin-top: 3px; accent-color: #3fb950; }
+  .opt b { display: block; font-size: 14px; }
+  .opt span { color: #aaa; font-size: 12px; }
+  .save { margin-top: 16px; padding: 10px 22px; background: #0a7cff; color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+  #msg { margin-left: 12px; color: #3fb950; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>YT Local — Settings</h1>
+  <p class="hint">Choose which player to use when a video is available locally.
+  "Ask each time" lets you decide per video; otherwise the preferred player is used automatically.</p>
+
+  <div class="card">
+    <div class="opt">
+      <input type="radio" name="player" id="ask" value="ask">
+      <label for="ask"><b>Ask each time</b><span>Show a YouTube / Local choice before playback.</span></label>
+    </div>
+    <div class="opt">
+      <input type="radio" name="player" id="youtube" value="youtube">
+      <label for="youtube"><b>YouTube player (default)</b><span>Always use the normal YouTube player; only use Local on demand.</span></label>
+    </div>
+    <div class="opt">
+      <input type="radio" name="player" id="local" value="local">
+      <label for="local"><b>Local player (default)</b><span>Always open the ad-free local player when the video is cached.</span></label>
+    </div>
+  </div>
+
+  <button class="save" id="save">Save</button><span id="msg"></span>
+
+  <script src="options.js"></script>
+</body>
+</html>

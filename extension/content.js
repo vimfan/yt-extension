@@ -282,10 +282,10 @@
   }
 
   function openLocalPlayer() {
+    if (player) return; // already open
     // Pause the YouTube player so two audio streams don't overlap.
     const ytPlayer = document.getElementById("movie_player");
     if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
-    if (player) return; // already open
     const built = buildPlayer(currentVideoId);
     player = built.root;
     pvideo = built.video;
@@ -299,10 +299,58 @@
     setStatus("▶ playing in local player");
   }
 
+  // =====================================================================
+  // Player chooser: ask which player to use when a video is available locally
+  // =====================================================================
+  let chooser = null;
+  let playerChoice = "ask"; // ask | youtube | local
+
+  function getSettings() {
+    return new Promise((r) => {
+      chrome.storage.sync.get({ playerChoice: "ask" }, (s) => r(s.playerChoice || "ask"));
+    });
+  }
+
+  function ensureChooser() {
+    const player = document.getElementById("movie_player") || document.querySelector("#player-container");
+    if (!player) return null;
+    if (chooser && chooser.isConnected) return chooser;
+    chooser = document.createElement("div");
+    chooser.id = "ytl-chooser";
+    chooser.style.cssText =
+      "position:absolute;left:12px;bottom:110px;z-index:2000;display:none;" +
+      "background:rgba(15,15,15,.95);border:1px solid #444;border-radius:10px;padding:10px 12px;" +
+      "color:#fff;font-family:Roboto,Arial,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.6);";
+    chooser.innerHTML =
+      '<div style="font-size:12px;color:#aaa;margin-bottom:8px;">Available locally — which player?</div>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button id="ytl-choice-youtube" style="padding:7px 14px;border:none;border-radius:7px;background:#333;color:#fff;font-size:13px;cursor:pointer;">YouTube</button>' +
+      '<button id="ytl-choice-local" style="padding:7px 14px;border:none;border-radius:7px;background:#3fb950;color:#fff;font-size:13px;cursor:pointer;">Local</button>' +
+      "</div>";
+    player.appendChild(chooser);
+    chooser.querySelector("#ytl-choice-youtube").addEventListener("click", () => {
+      hideChooser();
+      // just resume normal YouTube playback
+    });
+    chooser.querySelector("#ytl-choice-local").addEventListener("click", () => {
+      hideChooser();
+      openLocalPlayer();
+    });
+    return chooser;
+  }
+
+  function showChooser() {
+    const c = ensureChooser();
+    if (c) c.style.display = "block";
+  }
+
+  function hideChooser() {
+    if (chooser) chooser.style.display = "none";
+  }
+
   function setStatus(t) {
     try {
-      if (statusEl && statusEl.isConnected) statusEl.textContent = t;
-    } catch (e) {
+      if (statusEl && statusEl.isConnected) statusEl.textContent = t;    } catch (e) {
       // ignore — status element may have been torn down by YouTube
     }
   }
@@ -329,11 +377,20 @@
   });
 
   // ---- observe URL / view changes ----
+  let choicePromise = null;
+  function ensureChoice() {
+    if (!choicePromise) {
+      choicePromise = getSettings().then((c) => { playerChoice = c || "ask"; });
+    }
+    return choicePromise;
+  }
+
   async function sync() {
     const vid = videoIdFromUrl();
     if (vid !== currentVideoId) {
       playingLocal = false;
       setLocalBadge(false);
+      hideChooser();
     }
     currentVideoId = vid;
     isCached = false;
@@ -341,6 +398,7 @@
     ensureButton();
     ensureLocalBtn();
     setStatus("checking…");
+    await ensureChoice();
     // Check if already cached locally
     chrome.runtime.sendMessage({ type: "checkVideo", videoId: vid }, (resp) => {
       if (chrome.runtime.lastError || !resp) return setStatus("");
@@ -348,7 +406,15 @@
         isCached = true;
         setMode("play");
         setLocalBtn(true);
-        setStatus("local stream ready");
+        if (playerChoice === "local") {
+          setStatus("local stream ready");
+          openLocalPlayer();
+        } else if (playerChoice === "ask") {
+          setStatus("local stream ready");
+          showChooser();
+        } else {
+          setStatus("local stream ready (click Local to use it)");
+        }
       } else {
         setMode("save");
         setLocalBtn(false);
