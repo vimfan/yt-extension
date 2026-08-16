@@ -144,32 +144,159 @@
     startSave();
   }
 
-  function openLocalPlayer() {
-    // Play the locally-cached file. The host serves it with range support.
-    const url = `http://127.0.0.1:8717/video/${currentVideoId}`;
-    // Try to use the page's own <video> element by swapping its source.
-    const vids = document.querySelectorAll("video.html5-main-video");
-    if (vids.length) {
-      const v = vids[0];
-      const ytPlayer = document.getElementById("movie_player");
-      if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-      v.src = url;
-      v.play().then(() => {
-        playingLocal = true;
-        setLocalBtn(true);          // shows "▶ Local"
-        setLocalBadge(true);        // shows green LOCAL badge
-        setStatus("▶ playing local ad-free stream");
-      }).catch(() => {
-        // playback didn't start via play(); leave the video paused for the
-        // user to press play. Don't let this rejection bubble as uncaught.
-        playingLocal = true;
-        setLocalBtn(true);
-        setLocalBadge(true);
-        setStatus("click play to start local stream");
-      });
-      return;
+  // =====================================================================
+  // Custom local player overlay (fully independent of the YouTube player)
+  // =====================================================================
+  let player = null;          // root overlay element
+  let pvideo = null;          // <video>
+  let pPlaying = false;
+
+  function fmtTime(s) {
+    s = Math.floor(s || 0);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
+    return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  function iconSvg(path) {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="display:block">${path}</svg>`;
+  }
+
+  function buildPlayer(videoId) {
+    const root = document.createElement("div");
+    root.id = "ytl-player";
+    root.style.cssText =
+      "position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.92);" +
+      "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+      "font-family:Roboto,Arial,sans-serif;";
+
+    const video = document.createElement("video");
+    video.id = "ytl-player-video";
+    video.controls = false;
+    video.playsInline = true;
+    video.style.cssText = "max-width:92vw;max-height:78vh;background:#000;border-radius:8px;";
+
+    const vtt = `http://127.0.0.1:8717/subs/${videoId}`;
+    const track = document.createElement("track");
+    track.kind = "subtitles";
+    track.label = "English";
+    track.srclang = "en";
+    track.src = vtt;
+    track.default = true;
+    video.appendChild(track);
+
+    const title = document.createElement("div");
+    title.textContent = "LOCAL · " + (metaFromCfg().title || videoId);
+    title.style.cssText = "color:#fff;font-size:15px;font-weight:600;margin-bottom:12px;max-width:92vw;text-align:center;";
+
+    // ---- controls ----
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:12px;background:rgba(255,255,255,.08);padding:8px 12px;border-radius:8px;";
+
+    const mkBtn = (html, label, action) => {
+      const b = document.createElement("button");
+      b.innerHTML = html;
+      b.title = label;
+      b.style.cssText = "background:none;border:none;color:#fff;cursor:pointer;padding:6px;border-radius:6px;display:flex;";
+      b.addEventListener("click", action);
+      return b;
+    };
+
+    const playBtn = mkBtn(iconSvg('<path d="M8 5v14l11-7z"/>'), "Play/Pause", () => togglePlay());
+    const backBtn = mkBtn(iconSvg('<path d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/>'), "Back 10s", () => { video.currentTime = Math.max(0, video.currentTime - 10); });
+    const fwdBtn = mkBtn(iconSvg('<path d="M12 5V1l5 5-5 5V7c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6h2c0 4.4-3.6 8-8 8s-8-3.6-8-8 3.6-8 8-8z"/>'), "Forward 10s", () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
+    const ccBtn = mkBtn(iconSvg('<path d="M4 6h16v12H4z"/><rect x="9" y="10" width="2" height="4"/><rect x="13" y="10" width="2" height="4"/>'), "Subtitles", () => toggleCc());
+    const fsBtn = mkBtn(iconSvg('<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>'), "Fullscreen", () => toggleFullscreen());
+
+    const curEl = document.createElement("span");
+    curEl.textContent = "0:00 / 0:00";
+    curEl.style.cssText = "color:#ddd;font-size:12px;white-space:nowrap;min-width:92px;text-align:center;";
+
+    const seek = document.createElement("input");
+    seek.type = "range";
+    seek.min = 0; seek.max = 1000; seek.value = 0;
+    seek.style.cssText = "flex:1;min-width:120px;accent-color:#3fb950;";
+
+    const closeBtn = mkBtn(iconSvg('<path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/>'), "Close", () => closePlayer());
+
+    bar.append(backBtn, playBtn, fwdBtn, curEl, seek, ccBtn, fsBtn, closeBtn);
+    root.append(title, video, bar);
+
+    // wire seek bar
+    let dragging = false;
+    seek.addEventListener("input", () => { dragging = true; });
+    seek.addEventListener("change", () => { dragging = false; });
+    video.addEventListener("timeupdate", () => {
+      if (!dragging && video.duration) seek.value = (video.currentTime / video.duration) * 1000;
+      curEl.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration)}`;
+    });
+    seek.addEventListener("mouseup", () => {
+      if (video.duration) video.currentTime = (seek.value / 1000) * video.duration;
+      dragging = false;
+    });
+    seek.addEventListener("touchend", () => {
+      if (video.duration) video.currentTime = (seek.value / 1000) * video.duration;
+      dragging = false;
+    });
+
+    // keyboard: space = play, arrows = seek
+    root.addEventListener("keydown", (e) => {
+      if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+      else if (e.code === "ArrowLeft") video.currentTime = Math.max(0, video.currentTime - 5);
+      else if (e.code === "ArrowRight") video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
+      else if (e.code === "Escape") closePlayer();
+    });
+
+    // captions
+    function toggleCc() {
+      const show = track.track.mode === "hidden" || track.track.mode === "disabled";
+      track.track.mode = show ? "showing" : "hidden";
+      ccBtn.style.opacity = show ? "1" : ".4";
     }
-    window.open(url, "_blank");
+    function togglePlay() {
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    }
+    function toggleFullscreen() {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else root.requestFullscreen().catch(() => {});
+    }
+    function closePlayer() {
+      video.pause();
+      if (document.fullscreenElement && document.fullscreenElement === root) {
+        document.exitFullscreen().catch(() => {});
+      }
+      root.remove();
+      player = null;
+      pvideo = null;
+    }
+
+    video.addEventListener("play", () => { pPlaying = true; playBtn.style.opacity = "1"; });
+    video.addEventListener("pause", () => { pPlaying = false; playBtn.style.opacity = ".6"; });
+    // if subs 404, hide the cc button
+    track.addEventListener("error", () => { ccBtn.style.display = "none"; });
+
+    document.body.appendChild(root);
+    video.focus();
+    return { root, video, closePlayer };
+  }
+
+  function openLocalPlayer() {
+    // Pause the YouTube player so two audio streams don't overlap.
+    const ytPlayer = document.getElementById("movie_player");
+    if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+    if (player) return; // already open
+    const built = buildPlayer(currentVideoId);
+    player = built.root;
+    pvideo = built.video;
+    pvideo.src = `http://127.0.0.1:8717/video/${currentVideoId}`;
+    pvideo.load();
+    // attempt autoplay (may be blocked by browser); user can press play
+    pvideo.play().catch(() => {});
+    playingLocal = true;
+    setLocalBtn(true);
+    setLocalBadge(true);
+    setStatus("▶ playing in local player");
   }
 
   function setStatus(t) {

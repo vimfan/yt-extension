@@ -59,17 +59,25 @@ def main():
             )
             lb = page.locator("#ytl-local")
             print("LOCAL btn visible:", lb.is_visible(), "text:", lb.inner_text())
-            # click it to switch player to local stream
+            # click it to open the custom local player
             lb.click()
-            page.wait_for_timeout(2000)
-            print("local video src:", page.evaluate(
-                "document.querySelector('video.html5-main-video')?.src?.slice(0,40)"))
-            # LOCAL badge should be visible + button shows active state
-            badge = page.locator("#ytl-badge")
-            print("LOCAL badge visible:", badge.is_visible(), "text:", badge.inner_text())
-            print("LOCAL btn after play:", lb.inner_text())
+            page.wait_for_timeout(2500)
+            # custom player overlay + its video
+            pl = page.locator("#ytl-player")
+            print("custom player present:", pl.count() > 0)
+            if pl.count() > 0:
+                src = page.evaluate("document.querySelector('#ytl-player-video')?.src || ''")
+                print("custom player video src:", src[:45])
+                print("LOCAL badge:", page.locator("#ytl-badge").is_visible())
+                # controls present
+                print("has controls buttons:", page.locator("#ytl-player button").count())
+                # subs track
+                print("track src:", page.evaluate("document.querySelector('#ytl-player-video track')?.src?.slice(0,45) || 'none'"))
+            else:
+                print("local video src:", page.evaluate(
+                    "document.querySelector('video.html5-main-video')?.src?.slice(0,40)"))
         except Exception as e:
-            print("[Local] overlay button issue:", str(e)[:120])
+            print("[Local] overlay button issue:", str(e)[:150])
     finally:
         ctx.close()
         p.stop()

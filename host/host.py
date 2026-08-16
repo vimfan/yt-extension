@@ -94,6 +94,12 @@ class Cache:
     def path_for(self, video_id):
         return os.path.join(self.dir, f"{video_id}.mp4")
 
+    def subs_path(self, video_id):
+        return os.path.join(self.dir, f"{video_id}.vtt")
+
+    def has_subs(self, video_id):
+        return os.path.isfile(self.subs_path(video_id))
+
     def file_info(self, video_id):
         with self.lock:
             row = self.conn.execute(
@@ -114,6 +120,7 @@ class Cache:
             p = self.path_for(d["video_id"])
             if os.path.isfile(p):
                 d["size"] = os.path.getsize(p)
+                d["has_subs"] = self.has_subs(d["video_id"])
                 out.append(d)
         return out
 
@@ -197,6 +204,9 @@ def download_video(video_id, cache, max_height="720", cookies_browser=None):
             "-f", f"bestvideo[height<={max_height}]+bestaudio/best[height<={max_height}]",
             "--merge-output-format", "mp4",
             "--postprocessor-args", "Merger:-movflags +faststart",
+            "--write-subs", "--write-auto-subs",
+            "--sub-langs", "en.*,en",
+            "--sub-format", "vtt",
             "-o", tmpl,
             "--socket-timeout", "30", "--user-agent", UA,
         ] + _ytdlp_extra()
@@ -219,6 +229,17 @@ def download_video(video_id, cache, max_height="720", cookies_browser=None):
             return None
         dest = cache.path_for(video_id)
         shutil.move(src, dest)
+        # move any subtitles to a predictable name next to the video
+        for f in files:
+            base = os.path.basename(f)
+            if base.lower().endswith(".vtt") and base != os.path.basename(dest):
+                sub_path = os.path.join(tmpdir, base)
+                if os.path.isfile(sub_path):
+                    try:
+                        shutil.move(sub_path, cache.subs_path(video_id))
+                        log(f"  subtitles -> {cache.subs_path(video_id)}")
+                    except Exception as e:
+                        log(f"  subs move failed: {e}")
         log(f"  downloaded {video_id} -> {dest}")
         return dest
     except Exception as e:
@@ -249,6 +270,16 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code, obj):
         self._send(code, json.dumps(obj).encode())
 
+    def _send_file(self, path, ctype):
+        size = os.path.getsize(path)
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+        with open(path, "rb") as f:
+            shutil.copyfileobj(f, self.wfile)
+
     def do_OPTIONS(self):
         self._send(200)
 
@@ -272,7 +303,14 @@ class Handler(BaseHTTPRequestHandler):
             p = cache.path_for(vid)
             size = os.path.getsize(p) if os.path.isfile(p) else 0
             return self._json(200, {"video_id": vid, "size": size, "complete": info["complete"],
-                                    "cached": os.path.isfile(p)})
+                                    "cached": os.path.isfile(p), "has_subs": cache.has_subs(vid)})
+        if self.path.startswith("/subs/"):
+            vid = self.path.split("/")[-1]
+            p = cache.subs_path(vid)
+            if not os.path.isfile(p):
+                return self._send(404, b"not found", "text/plain")
+            cache.touch(vid)
+            return self._send_file(p, "text/vtt")
         if self.path.startswith("/video/"):
             vid = self.path.split("/")[-1]
             p = cache.path_for(vid)
