@@ -2,8 +2,8 @@ import os, time
 from playwright.sync_api import sync_playwright
 
 EXT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "extension"))
-VIDEO_URL = "https://www.youtube.com/watch?v=JGwWNGJdvx8"
-VIDEO_ID = "JGwWNGJdvx8"
+VIDEO_URL = "https://www.youtube.com/watch?v=AcIqoSLeATs"
+VIDEO_ID = "AcIqoSLeATs"
 
 def main():
     p = sync_playwright().start()
@@ -50,6 +50,22 @@ def main():
             print("FINAL button mode:", page.locator("#ytl-action").get_attribute("data-mode"))
         except Exception as e:
             print("button did not switch:", str(e)[:120])
+
+        # In-video [Local] overlay button should appear (visible) once streamable
+        try:
+            page.wait_for_function(
+                "document.querySelector('#ytl-local')?.style?.display === 'block'",
+                timeout=10000,
+            )
+            lb = page.locator("#ytl-local")
+            print("LOCAL btn visible:", lb.is_visible(), "text:", lb.inner_text())
+            # click it to switch player to local stream
+            lb.click()
+            page.wait_for_timeout(2000)
+            print("local video src:", page.evaluate(
+                "document.querySelector('video.html5-main-video')?.src?.slice(0,40)"))
+        except Exception as e:
+            print("[Local] overlay button issue:", str(e)[:120])
     finally:
         ctx.close()
         p.stop()

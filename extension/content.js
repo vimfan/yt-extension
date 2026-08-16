@@ -12,9 +12,38 @@
   let saveBtn = null;
   let isCached = false;
 
+  // In-video [Local] button overlaid on the player's bottom-left corner.
+  let localBtn = null;
+
   function videoIdFromUrl() {
     const m = location.pathname.match(/^\/watch/) && new URLSearchParams(location.search).get("v");
     return m || null;
+  }
+
+  // ---- in-video [Local] overlay button ----
+  function ensureLocalBtn() {
+    if (localBtn && localBtn.isConnected) return;
+    const player = document.getElementById("movie_player") || document.querySelector("#player-container");
+    if (!player) return;
+    localBtn = document.createElement("button");
+    localBtn.id = "ytl-local";
+    localBtn.textContent = "Local";
+    localBtn.style.cssText =
+      "position:absolute;left:12px;bottom:60px;z-index:1000;display:none;" +
+      "padding:5px 12px;border:none;border-radius:6px;background:rgba(10,124,255,.9);" +
+      "color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:Roboto,Arial,sans-serif;" +
+      "box-shadow:0 1px 4px rgba(0,0,0,.5);";
+    localBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (isCached) openLocalPlayer();
+      else startSave();
+    });
+    player.appendChild(localBtn);
+  }
+
+  function setLocalBtn(show) {
+    if (!localBtn) return;
+    localBtn.style.display = show ? "block" : "none";
   }
 
   function metaFromCfg() {
@@ -63,15 +92,10 @@
     }
   }
 
-  async function onAction() {
+  function startSave() {
     if (!currentVideoId) return;
-    const mode = saveBtn?.dataset?.mode || "save";
-    if (mode === "play") {
-      openLocalPlayer();
-      return;
-    }
     setMode("save");
-    setStatus("working…");
+    setStatus("downloading…");
     const meta = metaFromCfg();
     chrome.runtime.sendMessage({ type: "cacheVideo", videoId: currentVideoId, meta }, (resp) => {
       if (chrome.runtime.lastError) return setStatus("extension error");
@@ -79,8 +103,18 @@
         setStatus("failed: " + (resp?.reason || "unknown"));
         return;
       }
-      if (resp.async) setStatus("downloading… (button will enable when ready)");
+      if (resp.async) setStatus("downloading… ([Local] will appear when ready)");
     });
+  }
+
+  async function onAction() {
+    if (!currentVideoId) return;
+    const mode = saveBtn?.dataset?.mode || "save";
+    if (mode === "play") {
+      openLocalPlayer();
+      return;
+    }
+    startSave();
   }
 
   function openLocalPlayer() {
@@ -110,12 +144,13 @@
     if (msg.type === "streamable") {
       isCached = true;
       setMode("play");
+      setLocalBtn(true);
       setStatus("local stream ready");
     } else if (msg.type === "progress") {
       if (isCached) return;
       setStatus(msg.pct >= 0 ? `downloading… ${msg.pct}%` : "downloading…");
     } else if (msg.type === "done") {
-      if (msg.ok) { isCached = true; setMode("play"); setStatus("✓ ready — play locally"); }
+      if (msg.ok) { isCached = true; setMode("play"); setLocalBtn(true); setStatus("✓ ready — play locally"); }
       else setStatus("✗ failed");
     }
   });
@@ -127,6 +162,7 @@
     isCached = false;
     if (!vid) return;
     ensureButton();
+    ensureLocalBtn();
     setStatus("checking…");
     // Check if already cached locally
     chrome.runtime.sendMessage({ type: "checkVideo", videoId: vid }, (resp) => {
@@ -134,9 +170,11 @@
       if (resp.streamable || resp.complete) {
         isCached = true;
         setMode("play");
+        setLocalBtn(true);
         setStatus("local stream ready");
       } else {
         setMode("save");
+        setLocalBtn(false);
         setStatus("");
       }
     });
