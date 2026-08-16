@@ -154,18 +154,30 @@
       const ytPlayer = document.getElementById("movie_player");
       if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
       v.src = url;
-      v.play().catch(() => setStatus("click play on the video"));
-      playingLocal = true;
-      setLocalBtn(true);          // shows "▶ Local"
-      setLocalBadge(true);        // shows green LOCAL badge
-      setStatus("▶ playing local ad-free stream");
+      v.play().then(() => {
+        playingLocal = true;
+        setLocalBtn(true);          // shows "▶ Local"
+        setLocalBadge(true);        // shows green LOCAL badge
+        setStatus("▶ playing local ad-free stream");
+      }).catch(() => {
+        // playback didn't start via play(); leave the video paused for the
+        // user to press play. Don't let this rejection bubble as uncaught.
+        playingLocal = true;
+        setLocalBtn(true);
+        setLocalBadge(true);
+        setStatus("click play to start local stream");
+      });
       return;
     }
     window.open(url, "_blank");
   }
 
   function setStatus(t) {
-    if (statusEl) statusEl.textContent = t;
+    try {
+      if (statusEl && statusEl.isConnected) statusEl.textContent = t;
+    } catch (e) {
+      // ignore — status element may have been torn down by YouTube
+    }
   }
 
   // ---- progress / streamable updates from background ----
