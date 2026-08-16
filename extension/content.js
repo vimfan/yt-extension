@@ -23,9 +23,10 @@
 
   // ---- in-video [Local] overlay button ----
   function ensureLocalBtn() {
-    if (localBtn && localBtn.isConnected) return;
     const player = document.getElementById("movie_player") || document.querySelector("#player-container");
     if (!player) return;
+    if (localBtn && !localBtn.isConnected) localBtn = null;
+    if (localBtn) return;
     localBtn = document.createElement("button");
     localBtn.id = "ytl-local";
     localBtn.textContent = "Local";
@@ -51,9 +52,12 @@
   // Persistent "LOCAL" badge so it's obvious the stream is local (not YouTube).
   let localBadge = null;
   function ensureLocalBadge() {
-    if (localBadge && localBadge.isConnected) return;
     const player = document.getElementById("movie_player") || document.querySelector("#player-container");
     if (!player) return;
+    // If our badge isn't in the current player anymore (YouTube re-created it),
+    // create a fresh one.
+    if (localBadge && !localBadge.isConnected) localBadge = null;
+    if (localBadge) return;
     localBadge = document.createElement("div");
     localBadge.id = "ytl-badge";
     localBadge.textContent = "LOCAL";
@@ -166,18 +170,22 @@
 
   // ---- progress / streamable updates from background ----
   chrome.runtime.onMessage.addListener((msg) => {
-    if (!msg.videoId || msg.videoId !== currentVideoId) return;
-    if (msg.type === "streamable") {
-      isCached = true;
-      setMode("play");
-      setLocalBtn(true);
-      setStatus("local stream ready");
-    } else if (msg.type === "progress") {
-      if (isCached) return;
-      setStatus(msg.pct >= 0 ? `downloading… ${msg.pct}%` : "downloading…");
-    } else if (msg.type === "done") {
-      if (msg.ok) { isCached = true; setMode("play"); setLocalBtn(true); setStatus("✓ ready — play locally"); }
-      else setStatus("✗ failed");
+    try {
+      if (!msg || !msg.videoId || msg.videoId !== currentVideoId) return;
+      if (msg.type === "streamable") {
+        isCached = true;
+        setMode("play");
+        setLocalBtn(true);
+        setStatus("local stream ready");
+      } else if (msg.type === "progress") {
+        if (isCached) return;
+        setStatus(msg.pct >= 0 ? `downloading… ${msg.pct}%` : "downloading…");
+      } else if (msg.type === "done") {
+        if (msg.ok) { isCached = true; setMode("play"); setLocalBtn(true); setStatus("✓ ready — play locally"); }
+        else setStatus("✗ failed");
+      }
+    } catch (e) {
+      // Never let a stray message crash the page.
     }
   });
 
