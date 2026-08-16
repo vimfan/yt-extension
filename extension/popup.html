@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 340px; font-family: system-ui, sans-serif; margin: 0; background: #181818; color: #eee; }
+  .head { padding: 12px 14px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+  .head h1 { font-size: 15px; margin: 0; }
+  .head .usage { font-size: 12px; color: #aaa; }
+  .tools { display: flex; gap: 8px; padding: 10px 14px; }
+  .tools button { background: #222; border: 1px solid #444; color: #eee; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+  .tools button.danger { color: #ff6b6b; border-color: #8a3333; }
+  #list { max-height: 360px; overflow-y: auto; }
+  .item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid #242424; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .sub { font-size: 11px; color: #888; }
+  .item button { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; }
+  .empty { padding: 20px; text-align: center; color: #777; font-size: 13px; }
+  #err { padding: 10px 14px; color: #ffb86b; font-size: 12px; }
+  .hostoff { padding: 10px 14px; background: #3a2a10; color: #ffd479; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>YT Local</h1>
+    <span class="usage" id="usage"></span>
+  </div>
+  <div id="err"></div>
+  <div class="tools">
+    <button id="refresh">Refresh</button>
+    <button id="purge" class="danger">Purge now</button>
+  </div>
+  <div id="list"><div class="empty">Loading…</div></div>
+  <script src="popup.js"></script>
+</body>
+</html>

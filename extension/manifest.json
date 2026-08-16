@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "YT Local — ad-free local streaming",
+  "version": "0.1.0",
+  "description": "Cache YouTube videos to local disk (via local host) and play them ad-free. No mikrus, no server — just your disk.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://127.0.0.1:8717/*",
+    "http://localhost:8717/*",
+    "https://www.youtube.com/*",
+    "https://music.youtube.com/*",
+    "*://*.googlevideo.com/*",
+    "*://*.ytimg.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YT Local"
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}
