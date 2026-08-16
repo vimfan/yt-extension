@@ -64,6 +64,10 @@ def main():
             page.wait_for_timeout(2000)
             print("local video src:", page.evaluate(
                 "document.querySelector('video.html5-main-video')?.src?.slice(0,40)"))
+            # LOCAL badge should be visible + button shows active state
+            badge = page.locator("#ytl-badge")
+            print("LOCAL badge visible:", badge.is_visible(), "text:", badge.inner_text())
+            print("LOCAL btn after play:", lb.inner_text())
         except Exception as e:
             print("[Local] overlay button issue:", str(e)[:120])
     finally:

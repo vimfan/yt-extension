@@ -14,6 +14,7 @@
 
   // In-video [Local] button overlaid on the player's bottom-left corner.
   let localBtn = null;
+  let playingLocal = false;
 
   function videoIdFromUrl() {
     const m = location.pathname.match(/^\/watch/) && new URLSearchParams(location.search).get("v");
@@ -44,6 +45,28 @@
   function setLocalBtn(show) {
     if (!localBtn) return;
     localBtn.style.display = show ? "block" : "none";
+    if (show) localBtn.textContent = playingLocal ? "▶ Local" : "Local";
+  }
+
+  // Persistent "LOCAL" badge so it's obvious the stream is local (not YouTube).
+  let localBadge = null;
+  function ensureLocalBadge() {
+    if (localBadge && localBadge.isConnected) return;
+    const player = document.getElementById("movie_player") || document.querySelector("#player-container");
+    if (!player) return;
+    localBadge = document.createElement("div");
+    localBadge.id = "ytl-badge";
+    localBadge.textContent = "LOCAL";
+    localBadge.style.cssText =
+      "position:absolute;top:10px;left:12px;z-index:1001;display:none;" +
+      "padding:4px 10px;border-radius:5px;background:rgba(63,185,80,.92);color:#fff;" +
+      "font-size:11px;font-weight:800;letter-spacing:.5px;font-family:Roboto,Arial,sans-serif;";
+    player.appendChild(localBadge);
+  }
+
+  function setLocalBadge(show) {
+    ensureLocalBadge();
+    if (localBadge) localBadge.style.display = show ? "block" : "none";
   }
 
   function metaFromCfg() {
@@ -128,6 +151,9 @@
       if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
       v.src = url;
       v.play().catch(() => setStatus("click play on the video"));
+      playingLocal = true;
+      setLocalBtn(true);          // shows "▶ Local"
+      setLocalBadge(true);        // shows green LOCAL badge
       setStatus("▶ playing local ad-free stream");
       return;
     }
@@ -158,6 +184,10 @@
   // ---- observe URL / view changes ----
   async function sync() {
     const vid = videoIdFromUrl();
+    if (vid !== currentVideoId) {
+      playingLocal = false;
+      setLocalBadge(false);
+    }
     currentVideoId = vid;
     isCached = false;
     if (!vid) return;
