@@ -73,6 +73,19 @@ def main():
                 print("has controls buttons:", page.locator("#ytl-player button").count())
                 # subs track
                 print("track src:", page.evaluate("document.querySelector('#ytl-player-video track')?.src?.slice(0,45) || 'none'"))
+                # positioned in the player area (not fixed/fullscreen)
+                pos = page.evaluate("""() => {
+                  const r = document.getElementById('ytl-player').getBoundingClientRect();
+                  return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
+                           position: getComputedStyle(document.getElementById('ytl-player')).position };
+                }""")
+                print("player geometry:", pos)
+                # back button present
+                print("back button:", page.locator("#ytl-player button", has_text="Back to YouTube").count())
+                # click back -> player closes
+                page.locator("#ytl-player button", has_text="Back to YouTube").click()
+                page.wait_for_timeout(800)
+                print("player after back:", page.locator("#ytl-player").count())
             else:
                 print("local video src:", page.evaluate(
                     "document.querySelector('video.html5-main-video')?.src?.slice(0,40)"))

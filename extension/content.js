@@ -165,8 +165,10 @@
   function buildPlayer(videoId) {
     const root = document.createElement("div");
     root.id = "ytl-player";
+    // Sit exactly where the YouTube player is: absolute within the same
+    // container, sized to match, covering the normal player.
     root.style.cssText =
-      "position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.92);" +
+      "position:absolute;inset:0;z-index:2147483000;background:#000;" +
       "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
       "font-family:Roboto,Arial,sans-serif;";
 
@@ -174,7 +176,7 @@
     video.id = "ytl-player-video";
     video.controls = false;
     video.playsInline = true;
-    video.style.cssText = "max-width:92vw;max-height:78vh;background:#000;border-radius:8px;";
+    video.style.cssText = "width:100%;height:100%;object-fit:contain;background:#000;";
 
     const vtt = `http://127.0.0.1:8717/subs/${videoId}`;
     const track = document.createElement("track");
@@ -185,13 +187,30 @@
     track.default = true;
     video.appendChild(track);
 
+    // Top bar: always-present "Back to YouTube" so the user can always go back.
+    const topbar = document.createElement("div");
+    topbar.style.cssText =
+      "position:absolute;top:0;left:0;right:0;z-index:10;" +
+      "display:flex;align-items:center;gap:8px;padding:8px 10px;" +
+      "background:linear-gradient(rgba(0,0,0,.7),rgba(0,0,0,0));color:#fff;";
+    const backBtn2 = document.createElement("button");
+    backBtn2.textContent = "← Back to YouTube";
+    backBtn2.style.cssText =
+      "background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;" +
+      "border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit;";
+    backBtn2.addEventListener("click", () => closePlayer(true));
     const title = document.createElement("div");
     title.textContent = "LOCAL · " + (metaFromCfg().title || videoId);
-    title.style.cssText = "color:#fff;font-size:15px;font-weight:600;margin-bottom:12px;max-width:92vw;text-align:center;";
+    title.style.cssText = "color:#fff;font-size:13px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
+    topbar.append(backBtn2, title);
+    root.appendChild(topbar);
 
-    // ---- controls ----
+    // ---- controls (overlaid at the bottom) ----
     const bar = document.createElement("div");
-    bar.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:12px;background:rgba(255,255,255,.08);padding:8px 12px;border-radius:8px;";
+    bar.style.cssText =
+      "position:absolute;bottom:0;left:0;right:0;z-index:10;" +
+      "display:flex;align-items:center;gap:8px;padding:8px 12px;" +
+      "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.75));";
 
     const mkBtn = (html, label, action) => {
       const b = document.createElement("button");
@@ -217,10 +236,8 @@
     seek.min = 0; seek.max = 1000; seek.value = 0;
     seek.style.cssText = "flex:1;min-width:120px;accent-color:#3fb950;";
 
-    const closeBtn = mkBtn(iconSvg('<path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/>'), "Close", () => closePlayer());
-
-    bar.append(backBtn, playBtn, fwdBtn, curEl, seek, ccBtn, fsBtn, closeBtn);
-    root.append(title, video, bar);
+    bar.append(backBtn, playBtn, fwdBtn, curEl, seek, ccBtn, fsBtn);
+    root.append(video, bar);
 
     // wire seek bar
     let dragging = false;
@@ -244,7 +261,7 @@
       if (e.code === "Space") { e.preventDefault(); togglePlay(); }
       else if (e.code === "ArrowLeft") video.currentTime = Math.max(0, video.currentTime - 5);
       else if (e.code === "ArrowRight") video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
-      else if (e.code === "Escape") closePlayer();
+      else if (e.code === "Escape") closePlayer(true);
     });
 
     // captions
@@ -261,7 +278,7 @@
       if (document.fullscreenElement) document.exitFullscreen();
       else root.requestFullscreen().catch(() => {});
     }
-    function closePlayer() {
+    function closePlayer(goBack) {
       video.pause();
       if (document.fullscreenElement && document.fullscreenElement === root) {
         document.exitFullscreen().catch(() => {});
@@ -269,6 +286,16 @@
       root.remove();
       player = null;
       pvideo = null;
+      playingLocal = false;
+      setLocalBadge(false);
+      setLocalBtn(true); // re-enable the [Local] button (shows "Local" again)
+      // Restore the YouTube player surface.
+      const mp = document.getElementById("movie_player");
+      if (mp) { try { mp.style.opacity = ""; } catch (e) {} }
+      if (goBack && mp && mp.playVideo) {
+        // resume YouTube playback
+        try { mp.playVideo(); } catch (e) {}
+      }
     }
 
     video.addEventListener("play", () => { pPlaying = true; playBtn.style.opacity = "1"; });
@@ -283,10 +310,17 @@
 
   function openLocalPlayer() {
     if (player) return; // already open
-    // Pause the YouTube player so two audio streams don't overlap.
     const ytPlayer = document.getElementById("movie_player");
+    // Pause the YouTube player so two audio streams don't overlap.
     if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+    // Mount into the same container as the normal player so it appears in the
+    // same place. #movie_player (or its parent) is the positioned anchor.
+    let anchor = ytPlayer && ytPlayer.parentElement ? ytPlayer.parentElement : document.querySelector("#player-container");
+    if (!anchor) anchor = document.body;
     const built = buildPlayer(currentVideoId);
+    // Hide the YouTube player surface so only our local video shows in that spot.
+    if (ytPlayer) { try { ytPlayer.style.opacity = "0"; } catch (e) {} }
+    anchor.appendChild(built.root);
     player = built.root;
     pvideo = built.video;
     pvideo.src = `http://127.0.0.1:8717/video/${currentVideoId}`;
