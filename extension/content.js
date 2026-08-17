@@ -431,36 +431,48 @@
   }
 
   function ensureChooser() {
-    const player = document.getElementById("movie_player") || document.querySelector("#player-container");
-    if (!player) return null;
-    if (chooser && chooser.isConnected) return chooser;
-    chooser = document.createElement("div");
-    chooser.id = "ytl-chooser";
-    chooser.style.cssText =
-      "position:absolute;left:12px;bottom:110px;z-index:2000;display:none;" +
-      "background:rgba(15,15,15,.95);border:1px solid #444;border-radius:10px;padding:10px 12px;" +
-      "color:#fff;font-family:Roboto,Arial,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.6);";
-    chooser.innerHTML =
-      '<div style="font-size:12px;color:#aaa;margin-bottom:8px;">Available locally — which player?</div>' +
-      '<div style="display:flex;gap:8px;">' +
-      '<button id="ytl-choice-youtube" style="padding:7px 14px;border:none;border-radius:7px;background:#333;color:#fff;font-size:13px;cursor:pointer;">YouTube</button>' +
-      '<button id="ytl-choice-local" style="padding:7px 14px;border:none;border-radius:7px;background:#3fb950;color:#fff;font-size:13px;cursor:pointer;">Local</button>' +
-      "</div>";
-    player.appendChild(chooser);
-    chooser.querySelector("#ytl-choice-youtube").addEventListener("click", () => {
-      hideChooser();
-      // just resume normal YouTube playback
-    });
-    chooser.querySelector("#ytl-choice-local").addEventListener("click", () => {
-      hideChooser();
-      openLocalPlayer();
-    });
-    return chooser;
+    try {
+      const player = document.getElementById("movie_player") || document.querySelector("#player-container");
+      if (!player) return null;
+      // If the chooser exists but was detached by YouTube re-creating the
+      // player, drop it so we build a fresh one.
+      if (chooser && !chooser.isConnected) chooser = null;
+      if (chooser) return chooser;
+      chooser = document.createElement("div");
+      chooser.id = "ytl-chooser";
+      chooser.style.cssText =
+        "position:absolute;left:12px;bottom:110px;z-index:2000;display:none;" +
+        "background:rgba(15,15,15,.95);border:1px solid #444;border-radius:10px;padding:10px 12px;" +
+        "color:#fff;font-family:Roboto,Arial,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.6);";
+      chooser.innerHTML =
+        '<div style="font-size:12px;color:#aaa;margin-bottom:8px;">Available locally — which player?</div>' +
+        '<div style="display:flex;gap:8px;">' +
+        '<button id="ytl-choice-youtube" style="padding:7px 14px;border:none;border-radius:7px;background:#333;color:#fff;font-size:13px;cursor:pointer;">YouTube</button>' +
+        '<button id="ytl-choice-local" style="padding:7px 14px;border:none;border-radius:7px;background:#3fb950;color:#fff;font-size:13px;cursor:pointer;">Local</button>' +
+        "</div>";
+      player.appendChild(chooser);
+      chooser.querySelector("#ytl-choice-youtube").addEventListener("click", () => {
+        hideChooser();
+        // just resume normal YouTube playback
+      });
+      chooser.querySelector("#ytl-choice-local").addEventListener("click", () => {
+        hideChooser();
+        openLocalPlayer();
+      });
+      return chooser;
+    } catch (e) {
+      chooser = null;
+      return null;
+    }
   }
 
   function showChooser() {
-    const c = ensureChooser();
-    if (c) c.style.display = "block";
+    try {
+      const c = ensureChooser();
+      if (c) c.style.display = "block";
+    } catch (e) {
+      // never crash the page if the chooser can't be built
+    }
   }
 
   function hideChooser() {
