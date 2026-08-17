@@ -178,14 +178,74 @@
     video.playsInline = true;
     video.style.cssText = "width:100%;height:100%;object-fit:contain;background:#000;";
 
+    // Captions overlay (rendered manually from the VTT so we fully control
+    // visibility + on/off).
+    const cap = document.createElement("div");
+    cap.id = "ytl-captions";
+    cap.style.cssText =
+      "position:absolute;left:10%;right:10%;bottom:56px;z-index:12;display:none;" +
+      "text-align:center;color:#fff;font-family:Roboto,Arial,sans-serif;" +
+      "font-size:clamp(14px,2.4vw,28px);font-weight:500;line-height:1.3;" +
+      "text-shadow:0 2px 4px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.8);pointer-events:none;";
+    const cues = []; // {start, end, text}
+    let subsReady = false;
+    let ccOn = false;
+    (async () => {
+      try {
+        const r = await fetch(`http://127.0.0.1:8717/subs/${videoId}`);
+        if (!r.ok) throw new Error("no subs");
+        const text = await r.text();
+        parseVtt(text, cues);
+        subsReady = true;
+        ccBtn.style.display = "";
+      } catch (e) {
+        ccBtn.style.display = "none";
+      }
+    })();
+    function parseVtt(vtt, out) {
+      const lines = vtt.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3}) --> (\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
+        if (!m) continue;
+        const s = +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000;
+        const e = +m[5]*3600 + +m[6]*60 + +m[7] + +m[8]/1000;
+        // next non-empty line is the cue text (may span until blank line)
+        let text = "";
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === "") break;
+          text += (text ? " " : "") + lines[j];
+        }
+        out.push({ start: s, end: e, text: cleanVtt(text) });
+        i = i + 1;
+      }
+    }
+    function cleanVtt(t) {
+      // strip YouTube timestamp markers and <c> tags + numbered prefix
+      return t
+        .replace(/<00:\d{2}:\d{2}\.\d{3}>/g, "")
+        .replace(/<\/?c[^>]*>/g, "")
+        .replace(/^\s*\d+\.\s*/, "")
+        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .trim();
+    }
+    video.addEventListener("timeupdate", () => {
+      if (!ccOn || !cues.length) return;
+      const t = video.currentTime;
+      let found = "";
+      for (let k = 0; k < cues.length; k++) {
+        if (t >= cues[k].start && t < cues[k].end) { found = cues[k].text; break; }
+      }
+      cap.textContent = found;
+    });
+
     const vtt = `http://127.0.0.1:8717/subs/${videoId}`;
     const track = document.createElement("track");
     track.kind = "subtitles";
     track.label = "English";
     track.srclang = "en";
     track.src = vtt;
-    track.default = true;
     video.appendChild(track);
+    void track; // native track is a fallback; we render manually above
 
     // Top bar: always-present "Back to YouTube" so the user can always go back.
     const topbar = document.createElement("div");
@@ -237,7 +297,6 @@
     seek.style.cssText = "flex:1;min-width:120px;accent-color:#3fb950;";
 
     bar.append(backBtn, playBtn, fwdBtn, curEl, seek, ccBtn, fsBtn);
-    root.append(video, bar);
 
     // wire seek bar
     let dragging = false;
@@ -264,11 +323,11 @@
       else if (e.code === "Escape") closePlayer(true);
     });
 
-    // captions
+    // captions (manual overlay toggle)
     function toggleCc() {
-      const show = track.track.mode === "hidden" || track.track.mode === "disabled";
-      track.track.mode = show ? "showing" : "hidden";
-      ccBtn.style.opacity = show ? "1" : ".4";
+      ccOn = !ccOn;
+      cap.style.display = ccOn ? "block" : "none";
+      ccBtn.style.opacity = ccOn ? "1" : ".4";
     }
     function togglePlay() {
       if (video.paused) video.play().catch(() => {});
@@ -295,9 +354,8 @@
 
     video.addEventListener("play", () => { pPlaying = true; playBtn.style.opacity = "1"; });
     video.addEventListener("pause", () => { pPlaying = false; playBtn.style.opacity = ".6"; });
-    // if subs 404, hide the cc button
-    track.addEventListener("error", () => { ccBtn.style.display = "none"; });
 
+    root.append(video, bar, cap);
     document.body.appendChild(root);
     video.focus();
     return { root, video, closePlayer };
