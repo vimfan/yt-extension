@@ -190,18 +190,31 @@
     const cues = []; // {start, end, text}
     let subsReady = false;
     let ccOn = false;
-    (async () => {
+    let ccLang = "en"; // current caption language
+    let loadedLangs = { en: false, pl: false }; // loaded cue sets per lang
+    const cuesByLang = { en: [], pl: [] };
+
+    async function loadCues(lang) {
       try {
-        const r = await fetch(`http://127.0.0.1:8717/subs/${videoId}`);
+        const r = await fetch(`http://127.0.0.1:8717/subs/${videoId}?lang=${lang}`);
         if (!r.ok) throw new Error("no subs");
         const text = await r.text();
-        parseVtt(text, cues);
-        subsReady = true;
-        ccBtn.style.display = "";
+        cuesByLang[lang] = [];
+        parseVtt(text, cuesByLang[lang]);
+        loadedLangs[lang] = cuesByLang[lang].length > 0;
       } catch (e) {
-        ccBtn.style.display = "none";
+        loadedLangs[lang] = false;
       }
-    })();
+      maybeShowCc();
+    }
+
+    function maybeShowCc() {
+      if (loadedLangs.en || loadedLangs.pl) ccBtn.style.display = "";
+      else ccBtn.style.display = "none";
+    }
+    // kick off default (en); will also try pl via lang button
+    loadCues("en");
+
     function parseVtt(vtt, out) {
       const lines = vtt.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -229,11 +242,12 @@
         .trim();
     }
     video.addEventListener("timeupdate", () => {
-      if (!ccOn || !cues.length) return;
+      if (!ccOn) return;
       const t = video.currentTime;
+      const set = cuesByLang[ccLang] || [];
       let found = "";
-      for (let k = 0; k < cues.length; k++) {
-        if (t >= cues[k].start && t < cues[k].end) { found = cues[k].text; break; }
+      for (let k = 0; k < set.length; k++) {
+        if (t >= set[k].start && t < set[k].end) { found = set[k].text; break; }
       }
       cap.textContent = found;
     });
@@ -284,7 +298,17 @@
     const playBtn = mkBtn(iconSvg('<path d="M8 5v14l11-7z"/>'), "Play/Pause", () => togglePlay());
     const backBtn = mkBtn(iconSvg('<path d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/>'), "Back 10s", () => { video.currentTime = Math.max(0, video.currentTime - 10); });
     const fwdBtn = mkBtn(iconSvg('<path d="M12 5V1l5 5-5 5V7c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6h2c0 4.4-3.6 8-8 8s-8-3.6-8-8 3.6-8 8-8z"/>'), "Forward 10s", () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
-    const ccBtn = mkBtn(iconSvg('<path d="M4 6h16v12H4z"/><rect x="9" y="10" width="2" height="4"/><rect x="13" y="10" width="2" height="4"/>'), "Subtitles", () => toggleCc());
+    // "CC" button (text) toggles captions; a small lang button cycles EN/PL.
+    const ccBtn = mkBtn("CC", "Subtitles", () => toggleCc());
+    ccBtn.style.fontSize = "12px";
+    ccBtn.style.fontWeight = "700";
+    ccBtn.style.padding = "5px 8px";
+    ccBtn.style.opacity = ".4";
+    const langBtn = mkBtn("EN", "Caption language", () => cycleCcLang());
+    langBtn.style.fontSize = "11px";
+    langBtn.style.fontWeight = "600";
+    langBtn.style.padding = "5px 6px";
+    langBtn.style.opacity = ".6";
     const fsBtn = mkBtn(iconSvg('<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>'), "Fullscreen", () => toggleFullscreen());
 
     const curEl = document.createElement("span");
@@ -296,7 +320,7 @@
     seek.min = 0; seek.max = 1000; seek.value = 0;
     seek.style.cssText = "flex:1;min-width:120px;accent-color:#3fb950;";
 
-    bar.append(backBtn, playBtn, fwdBtn, curEl, seek, ccBtn, fsBtn);
+    bar.append(backBtn, playBtn, fwdBtn, curEl, seek, ccBtn, langBtn, fsBtn);
 
     // wire seek bar
     let dragging = false;
@@ -328,6 +352,13 @@
       ccOn = !ccOn;
       cap.style.display = ccOn ? "block" : "none";
       ccBtn.style.opacity = ccOn ? "1" : ".4";
+    }
+    // cycle caption language EN -> PL -> EN
+    function cycleCcLang() {
+      ccLang = ccLang === "en" ? "pl" : "en";
+      langBtn.textContent = ccLang.toUpperCase();
+      if (!loadedLangs[ccLang]) loadCues(ccLang);
+      if (ccOn) cap.textContent = ""; // refresh from new lang on next tick
     }
     function togglePlay() {
       if (video.paused) video.play().catch(() => {});

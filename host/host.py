@@ -94,11 +94,19 @@ class Cache:
     def path_for(self, video_id):
         return os.path.join(self.dir, f"{video_id}.mp4")
 
-    def subs_path(self, video_id):
-        return os.path.join(self.dir, f"{video_id}.vtt")
+    def subs_path(self, video_id, lang="en"):
+        return os.path.join(self.dir, f"{video_id}.{lang}.vtt")
 
     def has_subs(self, video_id):
-        return os.path.isfile(self.subs_path(video_id))
+        return os.path.isfile(self.subs_path(video_id, "en")) or os.path.isfile(self.subs_path(video_id, "pl"))
+
+    def list_sub_langs(self, video_id):
+        out = []
+        # prefer original over auto where both exist; map pl-orig -> pl
+        for lang in ("en", "pl", "pl-orig", "en-orig"):
+            if os.path.isfile(self.subs_path(video_id, lang)):
+                out.append(lang)
+        return out
 
     def file_info(self, video_id):
         with self.lock:
@@ -121,6 +129,7 @@ class Cache:
             if os.path.isfile(p):
                 d["size"] = os.path.getsize(p)
                 d["has_subs"] = self.has_subs(d["video_id"])
+                d["sub_langs"] = self.list_sub_langs(d["video_id"])
                 out.append(d)
         return out
 
@@ -205,8 +214,10 @@ def download_video(video_id, cache, max_height="720", cookies_browser=None):
             "--merge-output-format", "mp4",
             "--postprocessor-args", "Merger:-movflags +faststart",
             "--write-subs", "--write-auto-subs",
-            "--sub-langs", "en.*,en",
+            "--sub-langs", "en.*,en,pl.*,pl",
             "--sub-format", "vtt",
+            "--retries", "5",
+            "--sleep-requests", "1.0",
             "-o", tmpl,
             "--socket-timeout", "30", "--user-agent", UA,
         ] + _ytdlp_extra()
@@ -229,17 +240,22 @@ def download_video(video_id, cache, max_height="720", cookies_browser=None):
             return None
         dest = cache.path_for(video_id)
         shutil.move(src, dest)
-        # move any subtitles to a predictable name next to the video
+        # Move subtitles to per-language names next to the video:
+        #   <id>.<lang>.vtt  (yt-dlp names them <id>.<lang>.vtt)
         for f in files:
             base = os.path.basename(f)
             if base.lower().endswith(".vtt") and base != os.path.basename(dest):
                 sub_path = os.path.join(tmpdir, base)
-                if os.path.isfile(sub_path):
-                    try:
-                        shutil.move(sub_path, cache.subs_path(video_id))
-                        log(f"  subtitles -> {cache.subs_path(video_id)}")
-                    except Exception as e:
-                        log(f"  subs move failed: {e}")
+                if not os.path.isfile(sub_path):
+                    continue
+                # base looks like <id>.<lang>.vtt
+                stem = base[: -len(".vtt")]
+                lang = stem.split(".")[-1].lower()
+                try:
+                    shutil.move(sub_path, cache.subs_path(video_id, lang))
+                    log(f"  subtitles[{lang}] -> {cache.subs_path(video_id, lang)}")
+                except Exception as e:
+                    log(f"  subs move failed ({base}): {e}")
         log(f"  downloaded {video_id} -> {dest}")
         return dest
     except Exception as e:
@@ -303,10 +319,15 @@ class Handler(BaseHTTPRequestHandler):
             p = cache.path_for(vid)
             size = os.path.getsize(p) if os.path.isfile(p) else 0
             return self._json(200, {"video_id": vid, "size": size, "complete": info["complete"],
-                                    "cached": os.path.isfile(p), "has_subs": cache.has_subs(vid)})
+                                    "cached": os.path.isfile(p), "has_subs": cache.has_subs(vid),
+                                    "sub_langs": cache.list_sub_langs(vid)})
         if self.path.startswith("/subs/"):
-            vid = self.path.split("/")[-1]
-            p = cache.subs_path(vid)
+            from urllib.parse import parse_qs, urlparse
+            parsed = urlparse(self.path)
+            vid = parsed.path.split("/")[-1]
+            qs = parse_qs(parsed.query)
+            lang = (qs.get("lang") or ["en"])[0]
+            p = cache.subs_path(vid, lang)
             if not os.path.isfile(p):
                 return self._send(404, b"not found", "text/plain")
             cache.touch(vid)
