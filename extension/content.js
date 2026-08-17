@@ -369,18 +369,24 @@
       else root.requestFullscreen().catch(() => {});
     }
     function closePlayer(goBack) {
-      video.pause();
-      if (document.fullscreenElement && document.fullscreenElement === root) {
-        document.exitFullscreen().catch(() => {});
-      }
-      root.remove();
+      try {
+        video.pause();
+        if (document.fullscreenElement && document.fullscreenElement === root) {
+          document.exitFullscreen().catch(() => {});
+        }
+        root.remove();
+      } catch (e) {}
       player = null;
       pvideo = null;
       playingLocal = false;
-      setLocalBadge(false);
-      setLocalBtn(true); // re-enable the [Local] button (shows "Local" again)
+      try {
+        setLocalBadge(false);
+        setLocalBtn(true); // re-enable the [Local] button (shows "Local" again)
+      } catch (e) {}
       // Restore the YouTube player (unmute + resume if going back).
-      restoreYouTubePlayer(goBack);
+      try {
+        restoreYouTubePlayer(goBack);
+      } catch (e) {}
     }
 
     video.addEventListener("play", () => { pPlaying = true; playBtn.style.opacity = "1"; });
@@ -455,8 +461,10 @@
   // player object keeps its own closePlayer; we re-find the element.
   function closeLocalPlayer() {
     if (!player) return;
-    const p = document.getElementById("ytl-player");
-    if (p && p._closePlayer) p._closePlayer(false);
+    try {
+      const p = document.getElementById("ytl-player");
+      if (p && p._closePlayer) p._closePlayer(false);
+    } catch (e) {}
   }
 
   // =====================================================================
@@ -558,44 +566,48 @@
   }
 
   async function sync() {
-    const vid = videoIdFromUrl();
-    if (vid !== currentVideoId) {
-      // Navigating to a different video (or away from watch) — stop the local
-      // player so it doesn't keep playing under the new page.
-      closeLocalPlayer();
-      playingLocal = false;
-      setLocalBadge(false);
-      hideChooser();
-    }
-    currentVideoId = vid;
-    isCached = false;
-    if (!vid) return;
-    ensureButton();
-    ensureLocalBtn();
-    setStatus("checking…");
-    await ensureChoice();
-    // Check if already cached locally
-    chrome.runtime.sendMessage({ type: "checkVideo", videoId: vid }, (resp) => {
-      if (chrome.runtime.lastError || !resp) return setStatus("");
-      if (resp.streamable || resp.complete) {
-        isCached = true;
-        setMode("play");
-        setLocalBtn(true);
-        if (playerChoice === "local") {
-          setStatus("local stream ready");
-          openLocalPlayer();
-        } else if (playerChoice === "ask") {
-          setStatus("local stream ready");
-          showChooser();
-        } else {
-          setStatus("local stream ready (click Local to use it)");
-        }
-      } else {
-        setMode("save");
-        setLocalBtn(false);
-        setStatus("");
+    try {
+      const vid = videoIdFromUrl();
+      if (vid !== currentVideoId) {
+        // Navigating to a different video (or away from watch) — stop the local
+        // player so it doesn't keep playing under the new page.
+        closeLocalPlayer();
+        playingLocal = false;
+        setLocalBadge(false);
+        hideChooser();
       }
-    });
+      currentVideoId = vid;
+      isCached = false;
+      if (!vid) return;
+      ensureButton();
+      ensureLocalBtn();
+      setStatus("checking…");
+      await ensureChoice();
+      // Check if already cached locally
+      chrome.runtime.sendMessage({ type: "checkVideo", videoId: vid }, (resp) => {
+        if (chrome.runtime.lastError || !resp) return setStatus("");
+        if (resp.streamable || resp.complete) {
+          isCached = true;
+          setMode("play");
+          setLocalBtn(true);
+          if (playerChoice === "local") {
+            setStatus("local stream ready");
+            openLocalPlayer();
+          } else if (playerChoice === "ask") {
+            setStatus("local stream ready");
+            showChooser();
+          } else {
+            setStatus("local stream ready (click Local to use it)");
+          }
+        } else {
+          setMode("save");
+          setLocalBtn(false);
+          setStatus("");
+        }
+      });
+    } catch (e) {
+      // never let navigation/mutation crashes bubble to the page
+    }
   }
   let timer = null;
   new MutationObserver(() => {
