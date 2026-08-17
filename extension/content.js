@@ -389,6 +389,8 @@
     root.append(video, bar, cap);
     document.body.appendChild(root);
     video.focus();
+    // expose closePlayer on the root so navigation can stop the player
+    root._closePlayer = closePlayer;
     return { root, video, closePlayer };
   }
 
@@ -447,6 +449,14 @@
     setLocalBtn(true);
     setLocalBadge(true);
     setStatus("▶ playing in local player");
+  }
+
+  // Close the custom player if open (used on navigation away). The built
+  // player object keeps its own closePlayer; we re-find the element.
+  function closeLocalPlayer() {
+    if (!player) return;
+    const p = document.getElementById("ytl-player");
+    if (p && p._closePlayer) p._closePlayer(false);
   }
 
   // =====================================================================
@@ -550,6 +560,9 @@
   async function sync() {
     const vid = videoIdFromUrl();
     if (vid !== currentVideoId) {
+      // Navigating to a different video (or away from watch) — stop the local
+      // player so it doesn't keep playing under the new page.
+      closeLocalPlayer();
       playingLocal = false;
       setLocalBadge(false);
       hideChooser();
