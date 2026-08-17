@@ -475,7 +475,11 @@
 
   function getSettings() {
     return new Promise((r) => {
-      chrome.storage.sync.get({ playerChoice: "ask" }, (s) => r(s.playerChoice || "ask"));
+      try {
+        chrome.storage.sync.get({ playerChoice: "ask" }, (s) => r(s.playerChoice || "ask"));
+      } catch (e) {
+        r("ask");
+      }
     });
   }
 
@@ -560,7 +564,9 @@
   let choicePromise = null;
   function ensureChoice() {
     if (!choicePromise) {
-      choicePromise = getSettings().then((c) => { playerChoice = c || "ask"; });
+      choicePromise = getSettings()
+        .then((c) => { playerChoice = c || "ask"; })
+        .catch(() => { playerChoice = "ask"; }); // never reject
     }
     return choicePromise;
   }
