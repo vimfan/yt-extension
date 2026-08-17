@@ -289,13 +289,8 @@
       playingLocal = false;
       setLocalBadge(false);
       setLocalBtn(true); // re-enable the [Local] button (shows "Local" again)
-      // Restore the YouTube player surface.
-      const mp = document.getElementById("movie_player");
-      if (mp) { try { mp.style.opacity = ""; } catch (e) {} }
-      if (goBack && mp && mp.playVideo) {
-        // resume YouTube playback
-        try { mp.playVideo(); } catch (e) {}
-      }
+      // Restore the YouTube player (unmute + resume if going back).
+      restoreYouTubePlayer(goBack);
     }
 
     video.addEventListener("play", () => { pPlaying = true; playBtn.style.opacity = "1"; });
@@ -308,11 +303,43 @@
     return { root, video, closePlayer };
   }
 
+  // Pause + mute the YouTube player reliably (both the API and the real
+  // <video> element, since pauseVideo() alone may not stop the audio).
+  function stopYouTubePlayer() {
+    const mp = document.getElementById("movie_player");
+    if (mp && mp.pauseVideo) { try { mp.pauseVideo(); } catch (e) {} }
+    const v = document.querySelector("video.html5-main-video");
+    if (v) {
+      try {
+        window.__ytlPrevMuted = v.muted;
+        window.__ytlPrevVolume = v.volume;
+        v.pause();
+        v.muted = true;
+        v.volume = 0;
+      } catch (e) {}
+    }
+  }
+
+  function restoreYouTubePlayer(resume) {
+    const v = document.querySelector("video.html5-main-video");
+    if (v) {
+      try {
+        if (typeof window.__ytlPrevMuted === "boolean") v.muted = window.__ytlPrevMuted;
+        if (typeof window.__ytlPrevVolume === "number") v.volume = window.__ytlPrevVolume;
+      } catch (e) {}
+    }
+    const mp = document.getElementById("movie_player");
+    if (mp) { try { mp.style.opacity = ""; } catch (e) {} }
+    if (resume && mp && mp.playVideo) {
+      try { mp.playVideo(); } catch (e) {}
+    }
+  }
+
   function openLocalPlayer() {
     if (player) return; // already open
     const ytPlayer = document.getElementById("movie_player");
-    // Pause the YouTube player so two audio streams don't overlap.
-    if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+    // Stop the YouTube player so its audio doesn't keep playing under local.
+    stopYouTubePlayer();
     // Mount into the same container as the normal player so it appears in the
     // same place. #movie_player (or its parent) is the positioned anchor.
     let anchor = ytPlayer && ytPlayer.parentElement ? ytPlayer.parentElement : document.querySelector("#player-container");
